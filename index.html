@@ -33,6 +33,8 @@
     font-size: 15px;
     line-height: 1.5;
     overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
     -webkit-font-smoothing: antialiased;
     user-select: none;
     -webkit-user-select: none;
@@ -144,7 +146,10 @@
     touch-action: none;
   }
   .boost-btn.held { background: rgba(196, 91, 255, 0.45); }
+  dl.controls dd.touch { display: none; }
   @media (pointer: coarse) {
+    dl.controls dd.touch { display: block; }
+    dl.controls dd.desk { display: none; }
     .boost-btn { display: block; }
     .boost .label { display: none; }
   }
@@ -288,9 +293,9 @@
   <h1 id="t-start" class="title">Fenda Boreal</h1>
   <p class="lede">Pilote o planador pela fenda de cristal sob a aurora. Colete <b class="amber">fragmentos âmbar</b> para somar pontos e carregar o impulso. Desvie dos espinhos de cristal, das esferas violeta e das <b class="pink">barreiras de luz</b>. Você tem três escudos.</p>
   <dl class="controls">
-    <dt class="label">Mover</dt><dd>Mouse, <kbd>WASD</kbd> ou setas · arraste no celular</dd>
-    <dt class="label">Impulso</dt><dd>Segure <kbd>Espaço</kbd> ou o botão do mouse</dd>
-    <dt class="label">Pausa</dt><dd><kbd>P</kbd> ou <kbd>Esc</kbd> · som em <kbd>M</kbd></dd>
+    <dt class="label">Mover</dt><dd class="desk">Mouse, <kbd>WASD</kbd> ou setas</dd><dd class="touch">Arraste o dedo em qualquer lugar da tela</dd>
+    <dt class="label">Impulso</dt><dd class="desk">Segure <kbd>Espaço</kbd> ou o botão do mouse</dd><dd class="touch">Segure o botão Impulso, no canto direito</dd>
+    <dt class="label">Pausa</dt><dd class="desk"><kbd>P</kbd> ou <kbd>Esc</kbd> · som em <kbd>M</kbd></dd><dd class="touch">Botões no alto, à direita</dd>
   </dl>
   <div class="actions">
     <button id="btn-start" class="btn-primary" type="button" disabled>Carregando…</button>
@@ -387,7 +392,9 @@ try {
   window.__fendaReady = true;
   throw err;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const coarse = matchMedia('(pointer: coarse)').matches;
+let quality = Math.min(devicePixelRatio, coarse ? 1.5 : 2);
+renderer.setPixelRatio(quality);
 renderer.setSize(innerWidth, innerHeight, false);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
@@ -397,6 +404,18 @@ scene.background = new THREE.Color(0x05060f);
 scene.fog = new THREE.FogExp2(0x0b0c24, 0.0115);
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1200);
+// Em retrato a tela é estreita: abre o campo de visão e a câmera segue mais o planador.
+let baseFov = 70, followK = 0.55;
+function updateView() {
+  const a = innerWidth / innerHeight;
+  const t = clamp((a - 0.45) / 0.55, 0, 1);
+  baseFov = a >= 1 ? 70 : lerp(92, 70, t);
+  followK = a >= 1 ? 0.55 : lerp(0.92, 0.55, t);
+  camera.aspect = a;
+  camera.fov = baseFov;
+  camera.updateProjectionMatrix();
+}
+updateView();
 camera.position.set(0, 3.4, 8.2);
 
 const composer = new EffectComposer(renderer);
@@ -509,10 +528,11 @@ const groundMat = new THREE.ShaderMaterial({
       vec3 lineCol = mix(vec3(0.24, 0.95, 0.77), vec3(0.77, 0.36, 1.0), smoothstep(3.0, 16.0, abs(vWorld.x)));
       col += lineCol * g * fade * 0.38;
       // brilhos de gelo
-      vec2 cell = floor(vec2(vWorld.x, zz) * 1.5);
-      float s = hash(cell);
-      float tw = step(0.985, s) * (0.5 + 0.5 * sin(uTime * 3.0 + s * 60.0));
-      col += vec3(0.7, 0.9, 1.0) * tw * fade * 0.5;
+      vec2 q = vec2(vWorld.x, zz) * 1.5;
+      float s = hash(floor(q));
+      float spot = smoothstep(0.14, 0.0, length(fract(q) - 0.5));
+      float tw = step(0.985, s) * spot * (0.5 + 0.5 * sin(uTime * 3.0 + s * 60.0));
+      col += vec3(0.7, 0.9, 1.0) * tw * fade * 1.2;
       // faixa central pulsante
       float lane = exp(-abs(vWorld.x) * 1.2) * (0.5 + 0.5 * sin(zz * 0.15 - uTime * 2.0));
       col += vec3(0.24, 0.95, 0.77) * lane * fade * 0.06;
@@ -577,11 +597,18 @@ const snowPos = new Float32Array(SNOW * 3);
 for (let i = 0; i < SNOW; i++) {
   snowPos[i * 3] = rand(-30, 30);
   snowPos[i * 3 + 1] = rand(0, 18);
-  snowPos[i * 3 + 2] = rand(-130, 10);
+  snowPos[i * 3 + 2] = rand(-130, 5);
 }
 const snowGeo = new THREE.BufferGeometry();
 snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
-const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xcfeaff, size: 0.07, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+const dotTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const x = c.getContext('2d'), g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
+})();
+const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ map: dotTex, color: 0xcfeaff, size: 0.09, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
 snow.frustumCulled = false;
 scene.add(snow);
 function updateSnow(dz, dt) {
@@ -589,7 +616,7 @@ function updateSnow(dz, dt) {
     const k = i * 3;
     snowPos[k + 2] += dz;
     snowPos[k + 1] -= dt * 0.6;
-    if (snowPos[k + 2] > 10) { snowPos[k + 2] -= 140; snowPos[k] = rand(-30, 30); }
+    if (snowPos[k + 2] > 5) { snowPos[k + 2] -= 135; snowPos[k] = rand(-30, 30); }
     if (snowPos[k + 1] < 0) snowPos[k + 1] += 18;
   }
   snowGeo.attributes.position.needsUpdate = true;
@@ -1029,8 +1056,9 @@ canvas.addEventListener('pointermove', (e) => {
     P.tx = ((e.clientX / innerWidth) * 2 - 1) * BOUNDS.x * 1.15;
     P.ty = lerp(BOUNDS.yMin, BOUNDS.yMax, 1 - e.clientY / innerHeight);
   } else if (drag && e.pointerId === drag.id) {
-    P.tx = drag.tx + ((e.clientX - drag.x) / innerWidth) * 24;
-    P.ty = drag.ty - ((e.clientY - drag.y) / innerHeight) * 13;
+    const side = Math.min(innerWidth, innerHeight);
+    P.tx = drag.tx + ((e.clientX - drag.x) / side) * 17;
+    P.ty = drag.ty - ((e.clientY - drag.y) / side) * 10;
   }
   P.tx = clamp(P.tx, -BOUNDS.x, BOUNDS.x);
   P.ty = clamp(P.ty, BOUNDS.yMin, BOUNDS.yMax);
@@ -1050,13 +1078,27 @@ $('btn-resume').addEventListener('click', togglePause);
 $('btn-pause').addEventListener('click', togglePause);
 $('btn-sound').addEventListener('click', () => { initAudio(); setMuted(!muted); });
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+function applySize() {
+  renderer.setPixelRatio(quality);
+  composer.setPixelRatio(quality);
   renderer.setSize(innerWidth, innerHeight, false);
   composer.setSize(innerWidth, innerHeight);
-  bloom.resolution.set(innerWidth, innerHeight);
-});
+  particles.material.uniforms.uPR.value = quality;
+}
+addEventListener('resize', () => { updateView(); applySize(); });
+
+// Qualidade adaptativa: se o aparelho não sustentar ~40 fps, reduz a resolução e, no limite, o bloom.
+const perf = { t: 0, n: 0 };
+function watchPerf(raw) {
+  if (raw > 0.25 || G.state === 'paused') return;
+  perf.t += raw; perf.n++;
+  if (perf.n < 90) return;
+  const avg = perf.t / perf.n;
+  perf.t = 0; perf.n = 0;
+  if (avg <= 1 / 40) return;
+  if (quality > 0.75) { quality = Math.max(0.75, quality - 0.25); applySize(); }
+  else if (bloom.enabled) bloom.enabled = false;
+}
 
 /* ================= Laço principal ================= */
 const clock = new THREE.Clock();
@@ -1065,7 +1107,9 @@ let time = 0;
 
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const raw = clock.getDelta();
+  watchPerf(raw);
+  const dt = Math.min(raw, 0.05);
   if (G.state === 'paused') { composer.render(); return; }
   time += dt;
 
@@ -1177,11 +1221,11 @@ function frame() {
   }
 
   // Câmera
-  const fovT = G.boosting ? 84 : 70;
+  const fovT = baseFov + (G.boosting ? 14 : 0);
   camera.fov += (fovT - camera.fov) * Math.min(1, dt * 4);
   camera.updateProjectionMatrix();
   const cf = Math.min(1, dt * 4.5);
-  camera.position.x += (P.x * 0.55 - camera.position.x) * cf;
+  camera.position.x += (P.x * followK - camera.position.x) * cf;
   camera.position.y += (P.y * 0.65 + 2.4 - camera.position.y) * cf;
   camera.position.z = 8.2;
   G.shake *= Math.exp(-dt * 5);
@@ -1189,7 +1233,7 @@ function frame() {
     camera.position.x += rand(-1, 1) * G.shake * 0.4;
     camera.position.y += rand(-1, 1) * G.shake * 0.4;
   }
-  camera.lookAt(P.x * 0.8, P.y * 0.8 + 0.7, -14);
+  camera.lookAt(P.x * Math.max(0.8, followK), P.y * 0.8 + 0.7, -14);
   camera.rotateZ(P.roll * 0.18);
   sky.position.copy(camera.position);
 

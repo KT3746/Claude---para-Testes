@@ -13,7 +13,7 @@ python3 -m http.server 8000
 
 | Ação | Controle |
 | --- | --- |
-| Mover | Mouse, WASD ou setas · arrastar no celular |
+| Mover | Mouse, WASD ou setas · arrastar o dedo em qualquer lugar no celular |
 | Impulso | Segurar Espaço, Shift ou botão do mouse · botão na tela no celular |
 | Pausa | P ou Esc |
 | Som | M |
