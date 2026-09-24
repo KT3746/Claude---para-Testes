@@ -36,6 +36,10 @@ python3 -m http.server 8000
 
 Balsas de duas proas cruzam o fiorde de um lado para o outro. Passe por cima (a ponte de comando tem cerca de 12 m), espere ela andar ou contorne. À noite as janelas acendem.
 
+### Comportas de gelo
+
+Na fase da noite surgem comportas de gelo: duas placas deslizam e abrem e fecham uma passagem a cada ~4 s. Passar vale 200 pontos (300 na fresta). Quase fechada, só cabe de asas na vertical, com o giro.
+
 ### Fantasma do recorde
 
 O jogo grava o seu voo. Quando você bate o recorde, esse voo vira um planador translúcido na próxima partida, e o HUD mostra quantos metros você está à frente ou atrás dele. Fica salvo no navegador.
