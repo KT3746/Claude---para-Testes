@@ -37,6 +37,16 @@ python3 -m http.server 8000
 | Fúria (amarelo) | 6 s mais rápido e invencível; pulveriza as rochas no caminho |
 | Vida (rosa) | Uma vida a mais, até 5 |
 
+### Fases do voo
+
+O sol se põe enquanto você voa:
+
+| Distância | Fase |
+| --- | --- |
+| 0 km | Pôr do sol |
+| 2,5 km | Crepúsculo: hora azul, primeiras estrelas e luzes de navegação em destaque |
+| 5 km | Noite da aurora: aurora boreal refletida na água; cristais valem o dobro |
+
 Três vidas no início. Velocidade e densidade de obstáculos aumentam com a distância. O recorde fica salvo no navegador.
 
 ## Visual
@@ -47,6 +57,9 @@ Três vidas no início. Velocidade e densidade de obstáculos aumentam com a dis
 - Névoa de perspectiva aérea que usa a cor do céu na direção do olhar.
 - Planador modelado com perfil de asa NACA, cauda em T, canopy de vidro e hélice elétrica no nariz.
 - Sombras do sol, MSAA, bloom leve, tone mapping ACES e qualidade adaptativa para aparelhos mais fracos.
+- Céu que escurece com a distância: o mapa de ambiente é refeito conforme o sol desce, a aurora (shader de cortinas com raios) e as estrelas aparecem e a água reflete tudo.
+- Luzes de navegação do planador (vermelha à esquerda, verde à direita, branca na cauda) e flashes estroboscópicos.
+- Bandos de gaivotas que se espalham quando o planador passa perto.
 - Som sintetizado: vento que acompanha a velocidade, motor elétrico e bipes de cronometragem.
 
 ## Créditos

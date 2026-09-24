@@ -197,6 +197,22 @@
   }
   .touch-btns { display: none; gap: 12px; align-items: flex-end; }
 
+  .phase {
+    position: fixed; left: 50%; top: 24%;
+    transform: translateX(-50%);
+    display: grid; gap: 4px; justify-items: center; text-align: center;
+    pointer-events: none; opacity: 0;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+  }
+  .phase strong { font-family: var(--display); font-weight: 400; font-size: clamp(34px, 6vw, 54px); line-height: 1; }
+  .phase.show { animation: phaseIn 3.4s ease-out forwards; }
+  @keyframes phaseIn {
+    0% { opacity: 0; transform: translate(-50%, 10px); }
+    15% { opacity: 1; transform: translate(-50%, 0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
   #toast {
     position: fixed; left: 50%; top: 64%;
     transform: translate(-50%, 0);
@@ -333,6 +349,7 @@
 <div id="vignette"></div>
 <div id="flash"></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="phase" class="phase" aria-live="polite"><span id="phase-eyebrow" class="label"></span><strong id="phase-title"></strong></div>
 
 <div id="hud" hidden>
   <div id="mission" class="mission" hidden>
@@ -379,9 +396,9 @@
 </div>
 
 <section id="panel-start" class="panel" aria-labelledby="t-start">
-  <p class="label eyebrow">Fiorde norueguês · fim de tarde</p>
+  <p class="label eyebrow">Fiorde norueguês · do pôr do sol à aurora</p>
   <h1 id="t-start" class="title">Fenda Boreal</h1>
-  <p class="lede">Pilote um planador elétrico rente à água. Colete <b class="crystal">cristais de aurora</b>, estoure bolhas de power-up e passe entre os <b class="signal">pilares laranja</b>. Voe rente às rochas e aos cabos para ganhar raspões. Encadeie tudo sem parar e o combo leva o multiplicador até ×8.</p>
+  <p class="lede">Pilote um planador elétrico rente à água. Colete <b class="crystal">cristais de aurora</b>, estoure bolhas de power-up e passe entre os <b class="signal">pilares laranja</b>. Voe rente às rochas e aos cabos para ganhar raspões. Encadeie tudo sem parar e o combo leva o multiplicador até ×8. Voe longe o bastante e a noite chega com a aurora boreal.</p>
   <ul class="powers-list">
     <li><b style="color:#8ccaff">Escudo</b> aguenta uma batida</li>
     <li><b style="color:#ff8a93">Ímã</b> puxa os cristais</li>
@@ -591,14 +608,95 @@ function makeSky() {
 }
 const sky = makeSky();
 scene.add(sky);
-{
-  // Luz ambiente e reflexos vêm do próprio céu (mapa de ambiente pré-filtrado).
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = new THREE.Scene();
-  envScene.add(makeSky());
-  scene.environment = pmrem.fromScene(envScene).texture;
-  pmrem.dispose();
+
+/* ================= Noite: estrelas e aurora boreal ================= */
+const auroraMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uTwi: { value: 0 } },
+  side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  vertexShader: /* glsl */`
+    varying vec3 vDir;
+    void main() {
+      vDir = normalize(position);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      gl_Position.z = gl_Position.w; // sempre no fundo, como o céu
+    }`,
+  fragmentShader: /* glsl */`
+    uniform float uTime, uNight, uTwi;
+    varying vec3 vDir;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+    }
+    float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+    void main() {
+      if (uNight + uTwi < 0.001) discard;
+      vec3 d = normalize(vDir);
+      float h = d.y;
+      if (h < 0.0) discard;
+      float az = atan(d.x, -d.z);
+      vec3 aur = vec3(0.0);
+      for (int i = 0; i < 3; i++) {
+        float fi = float(i);
+        float base = 0.1 + 0.09 * fi + 0.07 * sin(az * 1.6 + fi * 2.1 + uTime * 0.05)
+          + 0.14 * (fbm(vec2(az * 1.2 + fi * 3.7, uTime * 0.025 + fi)) - 0.5);
+        float dh = h - base;
+        float curtain = smoothstep(-0.012, 0.012, dh) * exp(-max(dh, 0.0) * (5.5 + 2.5 * fi));
+        float rays = 0.35 + 0.65 * pow(noise(vec2(az * 95.0 + fi * 17.0, uTime * 0.22 + dh * 2.0)), 2.0);
+        float fold = 0.5 + 0.5 * sin(az * 6.0 + uTime * 0.18 + fi * 1.3 + fbm(vec2(az * 2.0, uTime * 0.05)) * 5.0);
+        // Verde do oxigênio embaixo, magenta e vermelho no alto, como nas fotos de aurora.
+        vec3 c = mix(vec3(0.1, 1.0, 0.4), vec3(0.7, 0.1, 0.5), smoothstep(0.04, 0.28, max(dh, 0.0)));
+        aur += c * curtain * rays * fold * (0.75 - 0.18 * fi);
+      }
+      float band = 0.35 + 0.65 * smoothstep(-0.8, 0.8, cos(az - 0.4));
+      vec3 col = aur * band * 1.3 * uNight * smoothstep(0.0, 0.05, h);
+      // Hora azul: brilho quente no horizonte onde o sol se pôs e azul profundo no alto.
+      float sunward = exp(-pow(az + 0.35, 2.0) * 1.5);
+      col += uTwi * (vec3(0.5, 0.2, 0.08) * exp(-h * 9.0) * (0.3 + sunward) + vec3(0.02, 0.045, 0.13) * (0.4 + h));
+      col += uNight * vec3(0.004, 0.009, 0.026) * (0.5 + h);
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+const aurora = new THREE.Mesh(new THREE.SphereGeometry(8000, 64, 32), auroraMat);
+aurora.renderOrder = 1;
+aurora.frustumCulled = false;
+scene.add(aurora);
+const starMat = new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.7, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false });
+const stars = (() => {
+  const n = 2600, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = Math.random() * Math.PI * 2, v = Math.acos(rand(0.03, 1));
+    pos[i * 3] = Math.sin(v) * Math.cos(u) * 7000;
+    pos[i * 3 + 1] = Math.cos(v) * 7000;
+    pos[i * 3 + 2] = Math.sin(v) * Math.sin(u) * 7000;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(g, starMat);
+  pts.frustumCulled = false;
+  pts.renderOrder = 1;
+  return pts;
+})();
+scene.add(stars);
+
+// Luz ambiente e reflexos vêm do próprio céu (mapa de ambiente pré-filtrado),
+// refeito aos poucos conforme o sol desce e a aurora aparece.
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+const envSky = makeSky();
+envScene.add(envSky, new THREE.Mesh(aurora.geometry, auroraMat));
+let envRT = null, envElev = 99, envNight = -1;
+function refreshEnv(force = false) {
+  if (!force && Math.abs(PHASE.elev - envElev) < 0.3 && Math.abs(PHASE.night - envNight) < 0.05) return;
+  envElev = PHASE.elev; envNight = PHASE.night;
+  const rt = pmrem.fromScene(envScene);
+  scene.environment = rt.texture;
+  if (envRT) envRT.dispose();
+  envRT = rt;
 }
+const PHASE = { elev: SUN_ELEV, night: 0 };
+const lightDir = sunDir.clone();
 
 const sun = new THREE.DirectionalLight(new THREE.Color(1.0, 0.8, 0.6), 3.2);
 sun.castShadow = true;
@@ -607,6 +705,9 @@ Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -11
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.6;
 scene.add(sun, sun.target);
+const moon = new THREE.DirectionalLight(0x9fb6ff, 0);
+moon.position.set(400, 900, 300);
+scene.add(moon);
 
 /* ================= Materiais com perspectiva aérea ================= */
 // A névoa usa a cor do próprio céu na direção do olhar: clara e quente perto do sol, azulada longe dele.
@@ -718,6 +819,29 @@ new THREE.TextureLoader().load('assets/waternormals.jpg', (tex) => {
   water.material.uniforms.normalSampler.value = tex;
   markReady();
 }, undefined, () => markReady());
+
+/* ================= Fases do dia: pôr do sol → crepúsculo → noite ================= */
+function setSunElevation(elev) {
+  PHASE.elev = elev;
+  PHASE.night = smooth(-1.5, -7.5, elev);
+  const deg = THREE.MathUtils.degToRad;
+  sunDir.setFromSphericalCoords(1, deg(90 - elev), deg(SUN_AZ));
+  lightDir.setFromSphericalCoords(1, deg(90 - Math.max(elev, 1.5)), deg(SUN_AZ));
+  sky.material.uniforms.sunPosition.value.copy(sunDir);
+  envSky.material.uniforms.sunPosition.value.copy(sunDir);
+  const low = smooth(-1, 3.5, elev);
+  sun.intensity = 3.2 * smooth(-2.5, 3, elev);
+  sun.color.setRGB(1, lerp(0.55, 0.8, low), lerp(0.35, 0.6, low));
+  moon.intensity = 0.5 * PHASE.night;
+  water.material.uniforms.sunDirection.value.copy(lightDir);
+  water.material.uniforms.sunColor.value.setRGB(1, 0.89, 0.77).multiplyScalar(smooth(-1.5, 3, elev));
+  auroraMat.uniforms.uNight.value = PHASE.night;
+  auroraMat.uniforms.uTwi.value = smooth(1.5, -2, elev) * (1 - smooth(-4, -9, elev));
+  starMat.opacity = smooth(-1, -6, elev);
+  renderer.toneMappingExposure = lerp(0.5, 1.2, smooth(1, -5, elev));
+  refreshEnv();
+}
+setSunElevation(SUN_ELEV);
 
 /* ================= Relevo em blocos que se renovam ================= */
 const CH_LEN = 400, CH_NX = 200, CH_NZ = 50, CH_COUNT = 8;
@@ -991,6 +1115,16 @@ const propDisc = new THREE.Mesh(new THREE.CircleGeometry(0.85, 40), new THREE.Me
   ship.traverse((o) => { if (o.isMesh && o !== propDisc) { o.castShadow = true; o.receiveShadow = true; } });
 }
 scene.add(ship);
+// Luzes de navegação: vermelha à esquerda, verde à direita, branca na cauda e flashes nas pontas.
+const navLights = (() => {
+  const geo = new THREE.SphereGeometry(0.09, 12, 8);
+  const mk = (c, x, y, z) => { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: c })); m.position.set(x, y, z); ship.add(m); return m; };
+  mk(new THREE.Color(4, 0.15, 0.1), -6.02, 0.55, -0.72);
+  mk(new THREE.Color(0.15, 4, 0.4), 6.02, 0.55, -0.72);
+  mk(new THREE.Color(3, 3, 3), 0, 1.47, 4.3);
+  const strobes = [-6.06, 6.06].map((x) => mk(new THREE.Color(14, 14, 16), x, 0.58, -0.6));
+  return { strobes };
+})();
 
 /* ================= Partículas (spray, vórtices, fumaça, fogo) ================= */
 const particleSystems = [];
@@ -1171,11 +1305,67 @@ function addGate(gx, z) {
 }
 function nearHazard(x, z, rx, rz) {
   for (const e of entities) {
-    if (e.scenic || e.type === 'gate' || e.type === 'crystal' || e.type.startsWith('power')) continue;
+    if (e.scenic || e.type === 'gate' || e.type === 'crystal' || e.type === 'flock' || e.type.startsWith('power')) continue;
     if (e.type === 'line') { if (Math.abs(e.z - z) < rz + 10) return true; continue; }
     if (Math.abs(e.z - z) < e.r + rz && Math.abs(e.x - x) < e.r + rx) return true;
   }
   return false;
+}
+
+/* ================= Gaivotas (enfeite, sem colisão) ================= */
+const gullBodyGeo = (() => { const g = new THREE.SphereGeometry(1, 12, 8); g.scale(0.13, 0.12, 0.42); return g; })();
+const gullWingGeo = (() => {
+  const g = new THREE.BufferGeometry();
+  const v = [0, 0, -0.14, 0, 0, 0.14, 0.55, 0.02, 0.07, 0, 0, -0.14, 0.55, 0.02, 0.07, 0.55, 0.02, -0.1, 0.55, 0.02, -0.1, 0.55, 0.02, 0.07, 1.0, 0, 0.14];
+  const c = [0.72, 0.62, 0.5, 0.72, 0.5, 0.5, 0.5, 0.5, 0.05].flatMap((k) => [k, k, k * 1.03]);
+  g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+  g.computeVertexNormals();
+  return g;
+})();
+const gullWingMat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.8 });
+const gullBodyMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e4, roughness: 0.7 });
+function makeGull() {
+  const b = new THREE.Group();
+  const wr = new THREE.Mesh(gullWingGeo, gullWingMat);
+  const wl = new THREE.Mesh(gullWingGeo, gullWingMat); wl.scale.x = -1;
+  b.add(new THREE.Mesh(gullBodyGeo, gullBodyMat), wl, wr);
+  b.userData = { wl, wr };
+  b.scale.setScalar(1.3);
+  return b;
+}
+function addFlock(z) {
+  const e = acquire('flock', () => {
+    const g = new THREE.Group();
+    g.userData.birds = Array.from({ length: 12 }, () => { const b = makeGull(); g.add(b); return b; });
+    return g;
+  });
+  const dir = Math.random() < 0.5 ? -1 : 1, n = 6 + Math.floor(Math.random() * 7);
+  Object.assign(e, { x: -dir * rand(20, 60), y: rand(16, 40), z, vx: dir * rand(7, 11), vz: rand(-3, 3), scattered: false, scenic: true });
+  e.obj.position.set(e.x, e.y, e.z);
+  e.birds = e.obj.userData.birds.map((m, i) => {
+    m.visible = i < n;
+    m.rotation.set(0, dir > 0 ? -Math.PI / 2 : Math.PI / 2, 0);
+    return { m, ox: rand(-9, 9), oy: rand(-3, 3), oz: rand(-9, 9), ph: rand(0, 6), vx: 0, vy: 0, vz: 0 };
+  });
+}
+function updateFlock(e, dt) {
+  e.x += e.vx * dt; e.z += e.vz * dt;
+  if (!e.scattered && G.state !== 'over' && Math.abs(e.z - P.z) < 30 && Math.hypot(P.x - e.x, P.y - e.y) < 26) {
+    // O planador passa perto e o bando se espalha.
+    e.scattered = true;
+    for (const b of e.birds) { b.vx = rand(-9, 9); b.vy = rand(3, 12); b.vz = rand(-9, 9); }
+  }
+  e.obj.position.set(e.x, e.y, e.z);
+  for (const b of e.birds) {
+    if (!b.m.visible) continue;
+    if (e.scattered) { b.ox += b.vx * dt; b.oy += b.vy * dt; b.oz += b.vz * dt; }
+    b.m.position.set(b.ox, b.oy + Math.sin(time * 1.5 + b.ph) * 0.4, b.oz);
+    const flapping = e.scattered || Math.sin(time * 0.7 + b.ph) > 0.1;
+    const a = flapping ? Math.sin(time * (e.scattered ? 16 : 9) + b.ph) * 0.65 : 0.08;
+    b.m.userData.wl.rotation.z = -a;
+    b.m.userData.wr.rotation.z = a;
+  }
 }
 
 /* ================= Cristais de aurora ================= */
@@ -1309,6 +1499,18 @@ const P = {
   trick: 0, trickDir: 1, trickCool: 0,
 };
 const TRICK_DUR = 0.7;
+const PHASES = [
+  { at: 0, eyebrow: 'Fase 1', title: 'Pôr do sol' },
+  { at: 2500, eyebrow: 'Fase 2 · luzes de navegação acesas', title: 'Crepúsculo' },
+  { at: 5000, eyebrow: 'Fase 3 · cristais valem o dobro', title: 'Noite da aurora' },
+];
+function showPhase(i) {
+  const ph = PHASES[i], el = $('phase');
+  $('phase-eyebrow').textContent = ph.eyebrow;
+  $('phase-title').textContent = ph.title;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  if (i > 0) [0, 4, 7, 11].forEach((st, k) => tone(261.63 * 2 ** (st / 12), 1.4, 'sine', 0.06, k * 0.18));
+}
 const COMBO_TIME = 3.5;
 const difficulty = () => clamp(G.dist / 14000, 0, 1);
 const multiplier = () => Math.min(8, 1 + Math.floor(G.combo / 5));
@@ -1628,6 +1830,8 @@ function startGame() {
   spawnRow(P.z - 720);
   addPower('shield', rand(-10, 10), 14, P.z - 380);
   setMission(0);
+  G.phase = 0;
+  showPhase(0);
   showPanel(null);
   ui.hud.hidden = false;
   updateLives();
@@ -1706,7 +1910,7 @@ function collectCrystal(e) {
   G.energy = Math.min(1, G.energy + 0.02);
   bumpCombo();
   missionEvent('crystals');
-  award(10, '', 'cyan');
+  award(PHASE.night > 0.5 ? 20 : 10, '', 'cyan');
   for (let i = 0; i < 14; i++) glow.emit(e.x, e.y, e.z, rand(-6, 6), rand(-4, 8), rand(-6, 6), C.crystal, rand(0.5, 1.1), rand(0.3, 0.6), 1, 0, 0);
   tone(PENTA[G.combo % PENTA.length], 0.35, 'sine', 0.1);
   tone(PENTA[G.combo % PENTA.length] * 2, 0.25, 'triangle', 0.03);
@@ -1956,6 +2160,15 @@ function frame() {
     }
   }
 
+  // Hora do dia acompanha a distância voada
+  const targetElev = G.state === 'attract' ? SUN_ELEV : lerp(SUN_ELEV, -9, smooth(0, 5500, G.dist));
+  if (Math.abs(targetElev - PHASE.elev) > 0.01) setSunElevation(targetElev);
+  if (G.state === 'play') while (G.phase + 1 < PHASES.length && G.dist >= PHASES[G.phase + 1].at) showPhase(++G.phase);
+  auroraMat.uniforms.uTime.value = time;
+  const sp = time % 1.3;
+  const strobeOn = sp < 0.05 || (sp > 0.16 && sp < 0.21);
+  for (const st of navLights.strobes) st.visible = strobeOn;
+
   // Mundo
   updateChunks(P.z);
   for (const p of particleSystems) p.update(dt);
@@ -1971,6 +2184,7 @@ function frame() {
       G.spawnAcc -= spacing;
       const z = P.z - SPAWN_AHEAD + G.spawnAcc;
       spawnRow(z);
+      if (PHASE.night < 0.6 && Math.random() < 0.3) addFlock(z - 40);
       if (Math.random() < 0.75) spawnGate(z + spacing * 0.5);
       if (Math.random() < 0.85) spawnCrystals(z + spacing * 0.42, spacing * 0.3);
       if (G.dist >= G.nextPower) { spawnPower(z + spacing * 0.78); G.nextPower = G.dist + rand(800, 1400); }
@@ -1981,12 +2195,18 @@ function frame() {
     addGate(rand(-18, 18), z);
     spawnCrystals(z + 70, 50);
     addScenic(z);
+    if (Math.random() < 0.4) addFlock(z - 40);
   }
 
   // Entidades: coleta, portões, raspões e colisões
   const magnet = G.state === 'play' && G.magnetT > 0;
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i];
+    if (e.type === 'flock') {
+      updateFlock(e, dt);
+      if (e.z - P.z > 90 || Math.abs(e.x) > 400) release(i);
+      continue;
+    }
     if (e.type === 'crystal' || e.type.startsWith('power')) {
       if (magnet && e.type === 'crystal') {
         const d = Math.hypot(e.x - P.x, e.y - P.y, e.z - P.z);
@@ -2060,11 +2280,13 @@ function frame() {
   camera.lookAt(camTarget);
   camera.rotateZ(P.roll * 0.22);
   sky.position.copy(camera.position);
+  aurora.position.copy(camera.position);
+  stars.position.copy(camera.position);
   water.position.set(camera.position.x, 0, camera.position.z);
 
   // Sol e sombras acompanham o planador
   sun.target.position.set(P.x, 0, P.z - 50);
-  sun.position.copy(sun.target.position).addScaledVector(sunDir, 900);
+  sun.position.copy(sun.target.position).addScaledVector(lightDir, 900);
 
   renderer.getDrawingBufferSize(drawSize);
   const pScale = drawSize.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
