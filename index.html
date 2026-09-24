@@ -170,6 +170,15 @@
     border: 1px solid var(--line); border-radius: 4px;
     display: grid; gap: 4px;
   }
+  .ghost-diff {
+    position: absolute;
+    right: calc(env(safe-area-inset-right, 0px) + 20px);
+    top: calc(env(safe-area-inset-top, 0px) + 162px);
+    font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 3px; background: rgba(12, 14, 18, 0.45);
+  }
+  .ghost-diff.ahead { color: var(--ok); }
+  .ghost-diff.behind { color: #bfeaff; }
   .mission-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   #mission-text { font-size: 14px; font-weight: 500; }
   #mission-prog { font-family: var(--mono); font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -352,6 +361,7 @@
 <div id="phase" class="phase" aria-live="polite"><span id="phase-eyebrow" class="label"></span><strong id="phase-title"></strong></div>
 
 <div id="hud" hidden>
+  <div id="ghost-diff" class="ghost-diff" hidden></div>
   <div id="mission" class="mission" hidden>
     <div class="mission-row"><span id="mission-title" class="label">Missão 1</span><span id="mission-prog">0/0</span></div>
     <span id="mission-text">Colete cristais</span>
@@ -398,7 +408,7 @@
 <section id="panel-start" class="panel" aria-labelledby="t-start">
   <p class="label eyebrow">Fiorde norueguês · do pôr do sol à aurora</p>
   <h1 id="t-start" class="title">Fenda Boreal</h1>
-  <p class="lede">Pilote um planador elétrico rente à água. Colete <b class="crystal">cristais de aurora</b>, estoure bolhas de power-up e passe entre os <b class="signal">pilares laranja</b>. Voe rente às rochas e aos cabos para ganhar raspões. Encadeie tudo sem parar e o combo leva o multiplicador até ×8. Voe longe o bastante e a noite chega com a aurora boreal.</p>
+  <p class="lede">Pilote um planador elétrico rente à água. Colete <b class="crystal">cristais de aurora</b>, estoure bolhas de power-up e passe entre os <b class="signal">pilares laranja</b>. Voe rente às rochas e aos cabos para ganhar raspões. Encadeie tudo sem parar e o combo leva o multiplicador até ×8. Cuidado com as balsas que cruzam o fiorde. Voe longe o bastante e a noite chega com a aurora boreal. Seu melhor voo vira um fantasma para você disputar.</p>
   <ul class="powers-list">
     <li><b style="color:#8ccaff">Escudo</b> aguenta uma batida</li>
     <li><b style="color:#ff8a93">Ímã</b> puxa os cristais</li>
@@ -497,6 +507,7 @@ const LINE_X = 90;            // torres de transmissão nas margens
 const LINE_K = 0.006;         // curvatura (catenária aproximada) dos cabos
 const SPAWN_AHEAD = 900;
 const BEST_KEY = 'fenda-boreal-recorde';
+const GHOST_KEY = 'fenda-boreal-fantasma';
 const MUTE_KEY = 'fenda-boreal-mudo';
 
 /* ================= Ruído (CPU) ================= */
@@ -1116,6 +1127,15 @@ const propDisc = new THREE.Mesh(new THREE.CircleGeometry(0.85, 40), new THREE.Me
 }
 scene.add(ship);
 // Luzes de navegação: vermelha à esquerda, verde à direita, branca na cauda e flashes nas pontas.
+// Fantasma do melhor voo: cópia translúcida do planador.
+const ghost = ship.clone(true);
+{
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.3, depthWrite: false });
+  ghost.traverse((o) => { if (o.isMesh) { o.material = ghostMat; o.castShadow = o.receiveShadow = false; } });
+  ghost.children.forEach((c) => { if (c.isGroup || c.geometry?.type === 'CircleGeometry') c.visible = false; });
+  ghost.visible = false;
+  scene.add(ghost);
+}
 const navLights = (() => {
   const geo = new THREE.SphereGeometry(0.09, 12, 8);
   const mk = (c, x, y, z) => { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: c })); m.position.set(x, y, z); ship.add(m); return m; };
@@ -1307,9 +1327,71 @@ function nearHazard(x, z, rx, rz) {
   for (const e of entities) {
     if (e.scenic || e.type === 'gate' || e.type === 'crystal' || e.type === 'flock' || e.type.startsWith('power')) continue;
     if (e.type === 'line') { if (Math.abs(e.z - z) < rz + 10) return true; continue; }
+    if (e.type === 'ferry') { if (Math.abs(e.z - z) < rz + FERRY_W) return true; continue; }
     if (Math.abs(e.z - z) < e.r + rz && Math.abs(e.x - x) < e.r + rx) return true;
   }
   return false;
+}
+
+/* ================= Balsa atravessando o fiorde ================= */
+const FERRY_L = 58, FERRY_W = 14;
+function buildFerry() {
+  const g = new THREE.Group();
+  // Casco de duas proas, como as balsas de carros dos fiordes.
+  const L = FERRY_L / 2, W = FERRY_W / 2;
+  const outline = new THREE.Shape().moveTo(-L, 0)
+    .quadraticCurveTo(-L + 3, W, -L + 13, W).lineTo(L - 13, W).quadraticCurveTo(L - 3, W, L, 0)
+    .quadraticCurveTo(L - 3, -W, L - 13, -W).lineTo(-L + 13, -W).quadraticCurveTo(-L + 3, -W, -L, 0);
+  const hullGeo = new THREE.ExtrudeGeometry(outline, { depth: 6, bevelEnabled: false, curveSegments: 16 });
+  hullGeo.rotateX(-Math.PI / 2);
+  hullGeo.translate(0, -1.5, 0);
+  const hullMat = patchMaterial(new THREE.MeshStandardMaterial({ color: 0x8e1b1f, roughness: 0.55, metalness: 0.2 }));
+  const white = patchMaterial(new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.5 }));
+  const dark = patchMaterial(new THREE.MeshStandardMaterial({ color: 0x1d2228, roughness: 0.4, metalness: 0.3 }));
+  // Fileira de janelas: faixas iluminadas separadas por colunas escuras.
+  const winTex = (() => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 16;
+    const x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, 256, 16);
+    for (let i = 0; i < 256; i += 8) { x.fillStyle = Math.random() < 0.85 ? '#ffb45e' : '#3a2410'; x.fillRect(i + 1, 3, 6, 10); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const glass = new THREE.MeshStandardMaterial({ color: 0x0c1418, roughness: 0.1, metalness: 0.5, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0 });
+  const hull = new THREE.Mesh(hullGeo, hullMat);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(FERRY_L - 26, 0.8, FERRY_W + 0.1), dark); band.position.y = 3.9;
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(34, 4.5, 10.5), white); deck.position.y = 6.7;
+  const windows = new THREE.Mesh(new THREE.BoxGeometry(33.6, 1.6, 11.2), glass); windows.position.y = 7.4;
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(12, 3.2, 9), white); bridge.position.y = 10.5;
+  const bridgeWin = new THREE.Mesh(new THREE.BoxGeometry(12.5, 1.3, 9.5), glass); bridgeWin.position.y = 11;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 4, 8), dark); mast.position.y = 14;
+  const navGeo = new THREE.SphereGeometry(0.25, 10, 8);
+  const navs = [[0, 16.1, 0, new THREE.Color(3, 3, 3)], [0, 11, 4.6, new THREE.Color(0.2, 3, 0.5)], [0, 11, -4.6, new THREE.Color(3, 0.2, 0.15)]]
+    .map(([x, y, z, c]) => { const m = new THREE.Mesh(navGeo, new THREE.MeshBasicMaterial({ color: c })); m.position.set(x, y, z); return m; });
+  g.add(hull, band, deck, windows, bridge, bridgeWin, mast, ...navs);
+  g.traverse((o) => { if (o.isMesh && o.material !== glass) { o.castShadow = true; o.receiveShadow = true; } });
+  g.userData.glass = glass;
+  return g;
+}
+function addFerry(z) {
+  const e = acquire('ferry', buildFerry);
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  // Começa de um lado e cruza o corredor mais ou menos quando o planador chega.
+  Object.assign(e, { x: -dir * rand(10, 55), z, vx: dir * rand(4, 7), r: 10, h: 13 });
+  e.obj.position.set(e.x, 0, z);
+  e.obj.userData.glass.emissiveIntensity = 1.6 * PHASE.night + 0.4 * smooth(1, -3, PHASE.elev);
+  // Trilha de cristais em arco por cima da balsa, como isca.
+  for (let k = -3; k <= 3; k++) addCrystal(rand(-6, 6) + e.x + e.vx * 12, 19 - Math.abs(k) * 1.5, z + k * 6);
+}
+function updateFerry(e, dt) {
+  e.x += e.vx * dt;
+  e.obj.position.x = e.x;
+  e.obj.rotation.z = Math.sin(time * 0.8 + e.z) * 0.012;
+  const near = Math.abs(e.z - P.z) < 500;
+  if (near && Math.random() < 0.5) {
+    const bow = e.x + Math.sign(e.vx) * FERRY_L / 2;
+    mist.emit(bow, 0.3, e.z + rand(-FERRY_W / 2, FERRY_W / 2), Math.sign(e.vx) * rand(1, 3), rand(1, 3), rand(-2, 2), C.spray, rand(1.5, 3), rand(1, 1.8), 0.4, 1.5, -6);
+    mist.emit(e.x - Math.sign(e.vx) * FERRY_L / 2, 0.3, e.z + rand(-4, 4), -e.vx * 0.3, rand(0.5, 2), rand(-1, 1), C.spray, rand(2, 4), rand(1.5, 2.5), 0.3, 2, -3);
+  }
 }
 
 /* ================= Gaivotas (enfeite, sem colisão) ================= */
@@ -1383,6 +1465,7 @@ function crystalBlocked(x, y, z) {
     else if (e.type === 'rock') { if (Math.abs(e.z - z) < e.r + 3 && Math.abs(e.x - x) < e.r + 3 && y < e.h * 1.4 + 3) return true; }
     else if (e.type === 'line') { if (Math.abs(e.z - z) < 8 && Math.abs(y - cableY(e.hMin, x)) < 3.5) return true; }
     else if (e.type === 'gate') { if (Math.abs(e.z - z) < 4 && Math.abs(Math.abs(x - e.x) - GATE_HALF) < 3) return true; }
+    else if (e.type === 'ferry') { if (Math.abs(e.z - z) < FERRY_W && y < 16) return true; }
   }
   return false;
 }
@@ -1537,7 +1620,7 @@ function spawnRow(z) {
       if (Math.random() < 0.72) addStack(LANES[i] + rand(-2, 2), z + rand(-8, 8), rand(3.8, 6), rand(45, 95));
       else addRock(LANES[i] + rand(-2, 2), z + rand(-8, 8), rand(4, 7), rand(5, 9));
     }
-  } else if (r < 0.8) {
+  } else if (r < 0.8 && (r < 0.7 || d < 0.08)) {
     const high = Math.random() < 0.5;
     addLine(z, high);
     // Cristais do lado seguro do cabo, como isca.
@@ -1545,6 +1628,8 @@ function spawnRow(z) {
     const y = high ? hMin - 7 : hMin + 7;
     const x0 = rand(-20, 20);
     for (let k = -2; k <= 2; k++) addCrystal(x0, y, z + k * 7);
+  } else if (r < 0.8) {
+    addFerry(z);
   } else {
     for (let i = 0; i < 2 + Math.floor(d * 3); i++) addRock(rand(-30, 30), z + rand(-20, 20), rand(3.5, 6.5), rand(4, 8));
   }
@@ -1576,12 +1661,18 @@ function clearance(e) {
   }
   if (e.type === 'rock') return Math.max(Math.abs(P.x - e.x) - (e.r * 0.8 + w.x), (P.y - w.y) - e.h * 1.15);
   if (e.type === 'line') return Math.abs(P.y - cableY(e.hMin, P.x)) - (0.8 + w.y);
+  if (e.type === 'ferry') {
+    const dx = Math.abs(P.x - e.x);
+    const h = dx < 17 ? 12.2 : 4.6;
+    return Math.max(dx - (FERRY_L / 2 + w.x * 0.9), (P.y - w.y) - h);
+  }
   return Infinity;
 }
 function hitsObstacle(e, rel) {
   if (e.type === 'stack') { const rEff = e.r * 0.85; if (Math.abs(rel) > rEff + 3) return false; }
   else if (e.type === 'rock') { if (Math.abs(rel) > e.r * 0.8 + 3) return false; }
   else if (e.type === 'line') { if (Math.abs(rel) > 6.5) return false; }
+  else if (e.type === 'ferry') { if (Math.abs(rel) > FERRY_W / 2 + 2.5) return false; }
   else return false;
   return clearance(e) < 0;
 }
@@ -1808,6 +1899,39 @@ function missionEvent(key, value = 1) {
 }
 
 /* ================= Fluxo do jogo ================= */
+// Grava o voo a cada 0,15 s; o melhor voo vira o fantasma da próxima partida.
+const GHOST_STEP = 0.15;
+let ghostRun = null;
+try { ghostRun = JSON.parse(store.get(GHOST_KEY) || 'null'); } catch { ghostRun = null; }
+const rec = { d: [], x: [], y: [], r: [] };
+function recordFlight() {
+  while (G.recT <= G.time) {
+    rec.d.push(Math.round(G.dist)); rec.x.push(+P.x.toFixed(1)); rec.y.push(+P.y.toFixed(1)); rec.r.push(+P.rollEff.toFixed(2));
+    G.recT += GHOST_STEP;
+  }
+}
+function updateGhost() {
+  const el = $('ghost-diff');
+  if (!ghostRun || !ghostRun.d?.length || G.state !== 'play') { ghost.visible = false; el.hidden = true; return; }
+  const f = G.time / GHOST_STEP, i = Math.floor(f), n = ghostRun.d.length;
+  el.hidden = false;
+  if (i >= n - 1) {
+    ghost.visible = false;
+    el.textContent = 'Você passou do voo recorde';
+    el.className = 'ghost-diff ahead';
+    return;
+  }
+  const t = f - i, L = (a) => a[i] + (a[i + 1] - a[i]) * t;
+  const gd = L(ghostRun.d);
+  ghost.visible = true;
+  ghost.position.set(L(ghostRun.x), L(ghostRun.y), G.startZ - gd);
+  ghost.rotation.set(0, 0, L(ghostRun.r));
+  const diff = G.dist - gd;
+  el.textContent = diff >= 0 ? `Recorde ${fmt(diff)} m atrás` : `Recorde ${fmt(-diff)} m à frente`;
+  el.className = 'ghost-diff ' + (diff >= 0 ? 'ahead' : 'behind');
+}
+function vibrate(ms) { try { navigator.vibrate?.(ms); } catch { /* sem vibração */ } }
+
 function startGame() {
   if (G.state === 'play') return;
   initAudio();
@@ -1816,7 +1940,9 @@ function startGame() {
     state: 'play', dist: 0, points: 0, gates: 0, gateStreak: 0, crystals: 0, combo: 0, comboT: 0, maxCombo: 0,
     nearMiss: 0, tricks: 0, powerups: 0, missionsDone: 0, lives: 3, invul: 1.2, energy: 0.5, boosting: false,
     spawnAcc: 0, overT: 0, nextPower: 500, shieldOn: false, magnetT: 0, turboT: 0,
+    time: 0, recT: 0, startZ: P.z,
   });
+  rec.d = []; rec.x = []; rec.y = []; rec.r = [];
   Object.assign(P, { x: 0, y: 12, tx: 0, ty: 12, roll: 0, rollEff: 0, pitch: 0, yaw: 0, trick: 0, trickCool: 0 });
   G.speed = Math.max(G.speed, 40);
   ship.visible = true;
@@ -1858,6 +1984,7 @@ function hit() {
     return;
   }
   G.lives--;
+  vibrate(G.lives <= 0 ? [80, 60, 200] : 60);
   G.combo = 0; G.comboT = 0;
   G.gateStreak = 0;
   missionEvent('gateStreak', 0);
@@ -1948,7 +2075,14 @@ function gameOver() {
   noiseHit(1.4, 2400, 0.7);
   explode(P.x, P.y, P.z);
   const record = G.points > G.best;
-  if (record) { G.best = Math.floor(G.points); store.set(BEST_KEY, String(G.best)); }
+  if (record) {
+    G.best = Math.floor(G.points);
+    store.set(BEST_KEY, String(G.best));
+    ghostRun = { d: rec.d.slice(), x: rec.x.slice(), y: rec.y.slice(), r: rec.r.slice() };
+    store.set(GHOST_KEY, JSON.stringify(ghostRun));
+  }
+  ghost.visible = false;
+  $('ghost-diff').hidden = true;
   $('new-record').hidden = !record;
   $('o-points').textContent = fmt(G.points);
   $('o-dist').textContent = `${fmtKm(G.dist)} km`;
@@ -2065,6 +2199,8 @@ function frame() {
 
   // Temporizadores
   if (G.state === 'play') {
+    G.time += dt;
+    recordFlight();
     if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) { G.comboT = 0; G.combo = 0; } }
     G.magnetT = Math.max(0, G.magnetT - dt);
     G.turboT = Math.max(0, G.turboT - dt);
@@ -2202,6 +2338,7 @@ function frame() {
   const magnet = G.state === 'play' && G.magnetT > 0;
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i];
+    if (e.type === 'ferry') updateFerry(e, dt);
     if (e.type === 'flock') {
       updateFlock(e, dt);
       if (e.z - P.z > 90 || Math.abs(e.x) > 400) release(i);
@@ -2249,7 +2386,7 @@ function frame() {
         if (G.turboT > 0) {
           e.done = true;
           smash(e);
-          if (e.type !== 'line') { release(i); continue; }
+          if (e.type !== 'line' && e.type !== 'ferry') { release(i); continue; }
         } else {
           hit();
           e.done = true;
@@ -2258,7 +2395,7 @@ function frame() {
       } else if (crossed && !e.done && G.invul <= 0) {
         e.done = true;
         const c = clearance(e);
-        if (c >= 0 && c < 3) nearMiss(e.type === 'line' ? 'Raspão no cabo' : 'Raspão');
+        if (c >= 0 && c < 3) nearMiss(e.type === 'line' ? 'Raspão no cabo' : e.type === 'ferry' ? 'Raspão na balsa' : 'Raspão');
       }
     }
     if (rel > 90) release(i);
@@ -2293,6 +2430,7 @@ function frame() {
   for (const p of particleSystems) p.mat.uniforms.uScale.value = pScale;
 
   if (G.state === 'play') { updateHud(); ui.mission.hidden = false; }
+  updateGhost();
   updateAudio();
   composer.render();
 }

@@ -32,6 +32,14 @@ python3 -m http.server 8000
 - **Combo**: toda ação boa soma ao combo, que esfria em 3,5 s sem novas ações. O multiplicador vai até ×8. Bater zera o combo.
 - **Missões** em sequência (cristais, raspões, portões seguidos, giros, combo, power-ups), cada vez mais difíceis, com recompensa em pontos e bateria cheia.
 
+### Balsas
+
+Balsas de duas proas cruzam o fiorde de um lado para o outro. Passe por cima (a ponte de comando tem cerca de 12 m), espere ela andar ou contorne. À noite as janelas acendem.
+
+### Fantasma do recorde
+
+O jogo grava o seu voo. Quando você bate o recorde, esse voo vira um planador translúcido na próxima partida, e o HUD mostra quantos metros você está à frente ou atrás dele. Fica salvo no navegador.
+
 ### Power-ups
 
 | Bolha | Efeito |
