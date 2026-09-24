@@ -15,13 +15,29 @@ python3 -m http.server 8000
 | --- | --- |
 | Pilotar | Mouse, WASD ou setas · arrastar o dedo em qualquer lugar no celular |
 | Motor | Segurar Espaço, Shift ou botão do mouse · botão Motor no celular |
+| Giro (tonneau) | Q / E ou botão direito do mouse · botão Giro no celular |
 | Pausa | P ou Esc |
 | Som | M |
 
-- Passe entre os dois pilares laranja de cada portão: +100 pontos × multiplicador e recarga da bateria.
-- A cada 4 portões seguidos o multiplicador sobe (até ×5); perder um portão zera a sequência.
-- Desvie das rochas no mar e dos cabos de alta tensão. As asas têm 12 m de envergadura e contam na colisão.
-- Três vidas. Velocidade e densidade de obstáculos aumentam com a distância. O recorde fica salvo no navegador.
+### Pontuação
+
+- **Cristais de aurora** aparecem em trilhas (reta, onda, arco e espiral), marcam passagens seguras e dão pontos e um pouco de bateria.
+- **Portões**: passar entre os pilares laranja vale 100; pelo centro, 150 ("portão perfeito"). Recarrega a bateria.
+- **Raspão**: passar a menos de 3 m de uma rocha, cabo ou pilar sem bater. Durante um giro vale mais que o dobro.
+- **Giro**: 360° sobre o eixo do planador. De asas na vertical ele cabe em vãos estreitos.
+- **Combo**: toda ação boa soma ao combo, que esfria em 3,5 s sem novas ações. O multiplicador vai até ×8. Bater zera o combo.
+- **Missões** em sequência (cristais, raspões, portões seguidos, giros, combo, power-ups), cada vez mais difíceis, com recompensa em pontos e bateria cheia.
+
+### Power-ups
+
+| Bolha | Efeito |
+| --- | --- |
+| Escudo (azul) | Aguenta uma batida |
+| Ímã (vermelho) | Puxa os cristais próximos por 10 s |
+| Fúria (amarelo) | 6 s mais rápido e invencível; pulveriza as rochas no caminho |
+| Vida (rosa) | Uma vida a mais, até 5 |
+
+Três vidas no início. Velocidade e densidade de obstáculos aumentam com a distância. O recorde fica salvo no navegador.
 
 ## Visual
 
