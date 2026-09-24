@@ -4,6 +4,10 @@ Jogo 3D no navegador feito com [three.js](https://threejs.org/): pilote um plana
 
 ## Como jogar
 
+Online: https://kt3746.github.io/Claude---para-Testes/ (publicado pelo GitHub Pages a cada push na `main`).
+
+Para rodar localmente:
+
 Sirva a pasta por HTTP (a textura da água não carrega via `file://`) e abra no navegador. É preciso internet para carregar o three.js do CDN.
 
 ```bash
