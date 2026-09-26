@@ -324,6 +324,7 @@
   @media (pointer: coarse) {
     .touch-btns { display: flex; }
     #btn-trick { width: 66px; height: 66px; font-size: 11px; }
+    .icon-btn { width: 44px; height: 44px; }
     dl.controls dd.touch { display: block; }
     dl.controls dd.desk { display: none; }
     .motor-btn { display: block; }
@@ -339,6 +340,13 @@
     .title { font-size: clamp(40px, 7vw, 56px); }
     .lede { font-size: 14px; }
     dl.controls dd, .powers-list { font-size: 13px; }
+  }
+  @media (max-height: 700px) {
+    /* Telas baixas (celular deitado ou pequeno): o botão principal sobe para logo abaixo do título. */
+    .panel > .eyebrow { order: -4; }
+    .panel > .title { order: -3; }
+    .panel > .record-badge { order: -2; }
+    .panel > .actions { order: -1; }
   }
   @media (max-width: 560px) {
     .combo-bar { width: 80px; }
