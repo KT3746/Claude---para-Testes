@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Fenda Boreal</title>
+<meta name="description" content="Pilote um planador elétrico rente à água de um fiorde norueguês, do pôr do sol à aurora boreal.">
+<meta property="og:title" content="Fenda Boreal">
+<meta property="og:description" content="Pilote um planador elétrico rente à água de um fiorde norueguês, do pôr do sol à aurora boreal.">
+<meta property="og:image" content="https://kt3746.github.io/Claude---para-Testes/assets/cartaz.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus+SC&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -489,6 +494,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 /* Unidades do mundo: metros e segundos. O planador voa para -z. */
 
@@ -547,11 +554,36 @@ function ridged(x, y, oct) {
   return s;
 }
 
+/* Marcos do fiorde (modelados no Blender, ver tools/blender): um a cada MARK_GAP metros.
+   A posição depende só de z, para o relevo saber onde abrir o patamar da igreja. */
+const MARK_GAP = 1100;
+const MARK_KINDS = ['farol', 'vila', 'igreja'];
+const MARK_D = { farol: -16, vila: -5, igreja: 18 }; // distância à margem; negativa = na água
+const MARK_SCALE = { farol: 1.5, vila: 1.3, igreja: 1.5 }; // um pouco acima do real, para ler de longe
+const TERRACE_H = 13;
+const shoreAt = (z, side) => 82 + 50 * fbm2(z * 0.0028 + (side > 0 ? 40 : 0), 7.3, 3);
+function markAt(k) {
+  if (k === 0) return { k, z: -330, side: 1, kind: 'farol' }; // já à vista na tela de título
+  const a = PERM[(k * 7 + 3) & 255] / 255, b = PERM[(k * 13 + 5) & 255] / 255;
+  return { k, z: -300 - k * MARK_GAP + (a - 0.5) * 300, side: b < 0.5 ? -1 : 1, kind: MARK_KINDS[k % 3] };
+}
+const markNear = (z) => markAt(Math.max(0, Math.round((-z - 300) / MARK_GAP)));
+// 0 a 1: quanto o relevo vira patamar gramado para a igreja (avança um pouco sobre a água).
+function terrace(x, z) {
+  const m = markNear(z);
+  if (m.kind !== 'igreja' || Math.sign(x) !== m.side) return 0;
+  const cx = m.side * (shoreAt(m.z, m.side) + MARK_D.igreja);
+  return 1 - smooth(1, 2.2, Math.hypot((x - cx) / 16, (z - m.z) / 24));
+}
+
 /* Altura do relevo do fiorde: água no meio, paredões nas margens, picos nevados ao fundo. */
 function terrainH(x, z) {
+  const h = fjordH(x, z), t = terrace(x, z);
+  return t > 0 ? lerp(h, TERRACE_H + (fbm2(x * 0.035, z * 0.035, 3) - 0.5) * 1.2, t) : h;
+}
+function fjordH(x, z) {
   const ax = Math.abs(x);
-  const shore = 82 + 50 * fbm2(z * 0.0028 + (x > 0 ? 40 : 0), 7.3, 3);
-  const d = ax - shore;
+  const d = ax - shoreAt(z, x);
   const det = (fbm2(x * 0.035, z * 0.035, 3) - 0.5) * 9;
   if (d < 0) return Math.max(-40, d * 0.6) + det * 0.3 - 2;
   // Perfil em U de vale glacial: íngreme junto à água, mais suave no alto.
@@ -715,6 +747,7 @@ function refreshEnv(force = false) {
   envRT = rt;
 }
 const PHASE = { elev: SUN_ELEV, night: 0 };
+const marks = { ready: false, tpl: {}, windows: [], lit: 0 }; // farol, vila e igreja (ver mais abaixo)
 const lightDir = sunDir.clone();
 
 const sun = new THREE.DirectionalLight(new THREE.Color(1.0, 0.8, 0.6), 3.2);
@@ -858,6 +891,7 @@ function setSunElevation(elev) {
   auroraMat.uniforms.uTwi.value = smooth(1.5, -2, elev) * (1 - smooth(-4, -9, elev));
   starMat.opacity = smooth(-1, -6, elev);
   renderer.toneMappingExposure = lerp(0.5, 1.2, smooth(1, -5, elev));
+  if (marks.ready) updateMarkLights();
   refreshEnv();
 }
 setSunElevation(SUN_ELEV);
@@ -1280,8 +1314,9 @@ function addStack(x, z, r, h, scenic = false) {
 }
 // Rochas de cenário ficam fora do corredor de voo e não entram na colisão.
 function addScenic(z) {
+  const m = markNear(z);
   for (const s of [-1, 1]) {
-    if (Math.random() > 0.6) continue;
+    if (Math.random() > 0.6 || (m.side === s && Math.abs(m.z - z) < 130)) continue;
     const r = rand(6, 12);
     addStack(s * (rand(50, 64) + r), z + rand(-60, 60), r, rand(60, 150), true);
   }
@@ -1401,6 +1436,132 @@ function updateFerry(e, dt) {
     mist.emit(bow, 0.3, e.z + rand(-FERRY_W / 2, FERRY_W / 2), Math.sign(e.vx) * rand(1, 3), rand(1, 3), rand(-2, 2), C.spray, rand(1.5, 3), rand(1, 1.8), 0.4, 1.5, -6);
     mist.emit(e.x - Math.sign(e.vx) * FERRY_L / 2, 0.3, e.z + rand(-4, 4), -e.vx * 0.3, rand(0.5, 2), rand(-1, 1), C.spray, rand(2, 4), rand(1.5, 2.5), 0.3, 2, -3);
   }
+}
+
+/* ================= Marcos do fiorde: farol, vila de pescadores e stavkirke ================= */
+// Modelados no Blender (tools/blender/cenario.py), com cor e oclusão cozidas na textura pelo Cycles.
+const lampMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const lanternMat = patchMaterial(new THREE.MeshPhysicalMaterial({
+  color: 0xa9c4cc, roughness: 0.05, transparent: true, opacity: 0.3, depthWrite: false,
+  emissive: 0xffc98a, emissiveIntensity: 0,
+}));
+// Facho do farol: cone aberto e aditivo, mais denso no eixo e perto da lâmpada.
+const beamMat = new THREE.ShaderMaterial({
+  uniforms: { uI: { value: 0 } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+  vertexShader: /* glsl */`
+    varying float vT;
+    varying vec3 vN, vV;
+    void main() {
+      vT = uv.y;
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vN = normalize(mat3(modelMatrix) * normal);
+      vV = cameraPosition - wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`,
+  fragmentShader: /* glsl */`
+    uniform float uI;
+    varying float vT;
+    varying vec3 vN, vV;
+    void main() {
+      float d = length(vV);
+      float core = pow(abs(dot(normalize(vN), vV / d)), 2.0);
+      float fog = exp(-d * d * 1.5e-6);
+      gl_FragColor = vec4(vec3(1.0, 0.85, 0.62) * uI * core * pow(vT, 3.0) * fog, 1.0);
+    }`,
+});
+const beamGeo = (() => {
+  const g = new THREE.CylinderGeometry(0.35, 12, 180, 32, 1, true);
+  g.translate(0, -90, 0);
+  g.rotateZ(Math.PI / 2); // do centro da lâmpada para +x
+  return g;
+})();
+const glareTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.15, 'rgba(255,236,200,0.55)');
+  g.addColorStop(0.45, 'rgba(255,200,140,0.12)');
+  g.addColorStop(1, 'rgba(255,190,120,0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+{
+  const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/libs/draco/gltf/');
+  new GLTFLoader().setDRACOLoader(draco).load('assets/cenario.glb', (gltf) => {
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const n = o.material.name;
+      if (n === 'rocha') o.material = rockMat;
+      else if (n === 'Farol_Vidro') o.material = lanternMat;
+      else if (n === 'Farol_Lampada') o.material = lampMat;
+      else {
+        Object.assign(o.material, { roughness: 0.85, metalness: 0 });
+        patchMaterial(o.material);
+        marks.windows.push(o.material);
+      }
+      o.castShadow = o.receiveShadow = o.material !== lanternMat && o.material !== lampMat;
+    });
+    const farol = gltf.scene.getObjectByName('Farol');
+    const beam = new THREE.Group();
+    beam.name = 'facho';
+    beam.position.set(0, 19.35, 0);
+    for (const a of [0, Math.PI]) { const b = new THREE.Mesh(beamGeo, beamMat); b.rotation.y = a; beam.add(b); }
+    const glare = new THREE.Sprite(new THREE.SpriteMaterial({ map: glareTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    glare.name = 'brilho';
+    glare.position.copy(beam.position);
+    farol.add(beam, glare);
+    for (const [kind, name] of [['farol', 'Farol'], ['vila', 'Vila'], ['igreja', 'Igreja']]) {
+      marks.tpl[kind] = gltf.scene.getObjectByName(name);
+    }
+    marks.ready = true;
+    updateMarkLights();
+  }, undefined, () => { /* sem os marcos o jogo segue igual */ });
+}
+function makeMark(kind) {
+  const o = marks.tpl[kind].clone();
+  const glare = o.getObjectByName('brilho');
+  if (glare) glare.material = glare.material.clone(); // cada farol pisca no seu tempo
+  o.userData.beam = o.getObjectByName('facho');
+  o.userData.glare = glare;
+  return o;
+}
+// Janelas acendem no fim da tarde; o farol gira desde o pôr do sol e domina a noite.
+function updateMarkLights() {
+  const lit = marks.lit = 0.1 + 0.9 * smooth(2.5, -2, PHASE.elev);
+  for (const m of marks.windows) m.emissiveIntensity = 0.2 + 2.4 * smooth(2.5, -3, PHASE.elev);
+  beamMat.uniforms.uI.value = 0.8 * lit;
+  lampMat.color.setRGB(4, 3.3, 2.3).multiplyScalar(0.3 + lit);
+  lanternMat.emissiveIntensity = 0.8 * lit;
+}
+let nextMark = 0;
+function spawnMarks() {
+  if (!marks.ready) return;
+  for (let m = markAt(nextMark); m.z > P.z - 1700; m = markAt(++nextMark)) {
+    if (m.z > P.z + 60) continue; // já ficou para trás
+    const e = acquire(m.kind, () => makeMark(m.kind));
+    const x = m.side * (shoreAt(m.z, m.side) + MARK_D[m.kind]);
+    const slope = (shoreAt(m.z + 20, m.side) - shoreAt(m.z - 20, m.side)) / 40;
+    Object.assign(e, { x, z: m.z, scenic: true, phase: rand(0, Math.PI * 2) });
+    e.obj.position.set(x, m.kind === 'igreja' ? TERRACE_H : 0, m.z);
+    e.obj.scale.setScalar(MARK_SCALE[m.kind]);
+    // Frente para o fiorde e o comprimento acompanhando a curva da margem; a igreja fica de lado.
+    e.obj.rotation.y = Math.atan2(-m.side, slope) + (m.kind === 'igreja' ? Math.PI / 2 : 0);
+  }
+}
+function updateFarol(e) {
+  const { beam, glare } = e.obj.userData;
+  beam.rotation.y = time * (Math.PI * 2 / 7) + e.phase;
+  // Clarão quando um dos dois fachos aponta para a câmera.
+  const a = e.obj.rotation.y + beam.rotation.y;
+  const dx = camera.position.x - e.x, dz = camera.position.z - e.z;
+  const c = Math.abs(Math.cos(a) * dx - Math.sin(a) * dz) / Math.hypot(dx, dz);
+  const flash = c ** 90 + 0.2 * c ** 8;
+  glare.material.color.setScalar(marks.lit * (0.4 + 5 * flash));
+  glare.scale.setScalar(5 + 34 * flash);
 }
 
 /* ================= Comporta de gelo (só à noite) ================= */
@@ -1664,8 +1825,10 @@ const LANES = [-32, -16, 0, 16, 32];
 
 function spawnRow(z) {
   const d = difficulty();
-  const r = Math.random();
-  if (PHASE.night > 0.5 && Math.random() < 0.22) {
+  // Perto de um marco, nada que atravesse o fiorde de margem a margem (torres, balsa, comporta).
+  const near = Math.abs(markNear(z).z - z) < 110;
+  const r = near ? Math.random() * 0.55 : Math.random();
+  if (!near && PHASE.night > 0.5 && Math.random() < 0.22) {
     addIceGate(z);
   } else if (d > 0.25 && r < 0.15) {
     // Paredão com uma única passagem.
@@ -2006,6 +2169,7 @@ function startGame() {
   if (G.state === 'play') return;
   initAudio();
   clearEntities();
+  nextMark = Math.max(0, Math.round((-P.z - 300) / MARK_GAP) - 1);
   Object.assign(G, {
     state: 'play', dist: 0, points: 0, gates: 0, gateStreak: 0, crystals: 0, combo: 0, comboT: 0, maxCombo: 0,
     nearMiss: 0, tricks: 0, powerups: 0, missionsDone: 0, lives: 3, invul: 1.2, energy: 0.5, boosting: false,
@@ -2377,6 +2541,7 @@ function frame() {
 
   // Mundo
   updateChunks(P.z);
+  spawnMarks();
   for (const p of particleSystems) p.update(dt);
   water.material.uniforms.time.value += dt * 0.55;
 
@@ -2409,6 +2574,7 @@ function frame() {
   for (let i = entities.length - 1; i >= 0; i--) {
     const e = entities[i];
     if (e.type === 'ferry') updateFerry(e, dt);
+    if (e.type === 'farol') updateFarol(e);
     if (e.type === 'ice') updateIceGate(e);
     if (e.type === 'flock') {
       updateFlock(e, dt);
