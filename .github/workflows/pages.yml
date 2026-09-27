@@ -27,7 +27,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html _site/
-          cp -r assets _site/
+          cp -r assets marcos _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

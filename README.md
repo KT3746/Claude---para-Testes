@@ -6,7 +6,12 @@ Jogo 3D no navegador feito com [three.js](https://threejs.org/): pilote um plana
 
 ## Como jogar
 
-Online: https://kt3746.github.io/Claude---para-Testes/ (publicado pelo GitHub Pages a cada push na `main`).
+Online (publicado pelo GitHub Pages a cada push na `main`), em duas versões:
+
+- **Original**: https://kt3746.github.io/Claude---para-Testes/
+- **Com os marcos do fiorde** (farol, vila e igreja modelados no Blender): https://kt3746.github.io/Claude---para-Testes/marcos/
+
+As duas ficam lado a lado no repositório: `index.html` é a original e `marcos/index.html` é a nova; a pasta `assets/` é compartilhada. O recorde e o fantasma também são compartilhados, porque ficam salvos no mesmo endereço.
 
 Para rodar localmente:
 
@@ -14,7 +19,7 @@ Sirva a pasta por HTTP (a textura da água não carrega via `file://`) e abra no
 
 ```bash
 python3 -m http.server 8000
-# depois abra http://localhost:8000
+# depois abra http://localhost:8000 (original) ou http://localhost:8000/marcos/
 ```
 
 | Ação | Controle |
@@ -42,7 +47,7 @@ Balsas de duas proas cruzam o fiorde de um lado para o outro. Passe por cima (a 
 
 Na fase da noite surgem comportas de gelo: duas placas deslizam e abrem e fecham uma passagem a cada ~4 s. Passar vale 200 pontos (300 na fresta). Quase fechada, só cabe de asas na vertical, com o giro.
 
-### Marcos do fiorde
+### Marcos do fiorde (só na versão `marcos/`)
 
 A cada quilômetro, mais ou menos, surge uma construção numa das margens:
 
