@@ -1,10 +1,17 @@
 # Fenda Boreal
 
-Jogo 3D no navegador feito com [three.js](https://threejs.org/): pilote um planador elétrico rente à água de um fiorde norueguês ao pôr do sol, passando por portões de corrida aérea e desviando de rochas e cabos de alta tensão.
+![Planador sobre o fiorde ao pôr do sol, com o farol, a vila de pescadores e a stavkirke nas margens](assets/cartaz.jpg)
+
+Jogo 3D no navegador feito com [three.js](https://threejs.org/): pilote um planador elétrico rente à água de um fiorde norueguês ao pôr do sol, passando por portões de corrida aérea e desviando de rochas e cabos de alta tensão. As construções das margens foram modeladas no [Blender](https://www.blender.org/).
 
 ## Como jogar
 
-Online: https://kt3746.github.io/Claude---para-Testes/ (publicado pelo GitHub Pages a cada push na `main`).
+Online (publicado pelo GitHub Pages a cada push na `main`), em duas versões:
+
+- **Original**: https://kt3746.github.io/Claude---para-Testes/
+- **Com os marcos do fiorde** (farol, vila e igreja modelados no Blender): https://kt3746.github.io/Claude---para-Testes/marcos/
+
+As duas ficam lado a lado no repositório: `index.html` é a original e `marcos/index.html` é a nova; a pasta `assets/` é compartilhada. O recorde e o fantasma também são compartilhados, porque ficam salvos no mesmo endereço.
 
 Para rodar localmente:
 
@@ -12,7 +19,7 @@ Sirva a pasta por HTTP (a textura da água não carrega via `file://`) e abra no
 
 ```bash
 python3 -m http.server 8000
-# depois abra http://localhost:8000
+# depois abra http://localhost:8000 (original) ou http://localhost:8000/marcos/
 ```
 
 | Ação | Controle |
@@ -39,6 +46,16 @@ Balsas de duas proas cruzam o fiorde de um lado para o outro. Passe por cima (a 
 ### Comportas de gelo
 
 Na fase da noite surgem comportas de gelo: duas placas deslizam e abrem e fecham uma passagem a cada ~4 s. Passar vale 200 pontos (300 na fresta). Quase fechada, só cabe de asas na vertical, com o giro.
+
+### Marcos do fiorde (só na versão `marcos/`)
+
+A cada quilômetro, mais ou menos, surge uma construção numa das margens:
+
+- **Farol** numa ilhota, com a casa do faroleiro. Do fim da tarde em diante o facho gira e dá um clarão quando aponta para você.
+- **Vila de pescadores**: rorbuer vermelhas e ocre sobre palafitas, com cais, píer e barcos.
+- **Stavkirke**, a igreja de madeira com telhados em camadas e cabeças de dragão, num patamar gramado que o relevo abre para ela.
+
+As janelas acendem conforme escurece, e tudo se reflete na água. Os marcos são só cenário: ficam fora do corredor de voo e não entram na colisão.
 
 ### Fantasma do recorde
 
@@ -77,6 +94,21 @@ Três vidas no início. Velocidade e densidade de obstáculos aumentam com a dis
 - Luzes de navegação do planador (vermelha à esquerda, verde à direita, branca na cauda) e flashes estroboscópicos.
 - Bandos de gaivotas que se espalham quando o planador passa perto.
 - Som sintetizado: vento que acompanha a velocidade, motor elétrico e bipes de cronometragem.
+
+## Modelos 3D (Blender)
+
+Os marcos saem de `tools/blender/cenario.py`, um script que monta tudo por código no Blender: geometria, materiais procedurais (tábuas, telhas de madeira, turfa, ferro com ferrugem, rocha com líquen) e a cena. O Cycles cozinha cor, oclusão de ambiente e janelas acesas numa textura por construção, e o resultado vai para `assets/cenario.glb` (glTF com malhas em Draco e texturas em WebP). No jogo, as janelas e o farol respondem à hora do dia, e as rochas usam o mesmo shader do relevo.
+
+O cartaz (`assets/cartaz.jpg`) é renderizado no Cycles por `tools/blender/cartaz.py`. Ele usa o relevo do jogo (o mesmo ruído, com a mesma semente, portado para Python), um céu físico (Nishita) e o planador reconstruído a partir do código three.js.
+
+Para gerar de novo, com o Blender 4.2 ou mais novo, ou com o módulo `bpy` do PyPI (Python 3.11):
+
+```bash
+pip install "bpy==4.5.*"
+python3 tools/blender/cenario.py            # só o assets/cenario.glb (~1 min)
+python3 tools/blender/cenario.py --cartaz   # também o cartaz (bem mais demorado)
+# ou: blender -b -P tools/blender/cenario.py -- --cartaz
+```
 
 ## Créditos
 
