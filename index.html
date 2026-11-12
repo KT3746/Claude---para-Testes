@@ -2169,7 +2169,7 @@ let mouseHeld = false, touchMotor = false, drag = null;
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k) && e.target.tagName !== 'BUTTON') e.preventDefault();
-  if (k === 'enter' || k === ' ') {
+  if ((k === 'enter' || k === ' ') && !e.repeat) {
     if (e.target.tagName === 'BUTTON') return;
     if (G.state === 'attract' && !$('btn-start').disabled) { startGame(); return; }
     if (G.state === 'over' && G.overT > 2.2) { startGame(); return; }
